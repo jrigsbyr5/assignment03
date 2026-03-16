@@ -13,6 +13,9 @@
 """
 
 import pathlib
+import pandas as pd
+import geopandas as gpd
+from shapely.geometry import Point
 
 
 DATA_DIR = pathlib.Path(__file__).parent.parent / 'data'
@@ -32,6 +35,27 @@ HOURLY_COLUMNS = [
 
 # --- Hourly observation data ---
 
+def load_hourly_dataframe(date_str):
+    """Helper function to load all 24 hourly files into one dataframe."""
+
+    raw_dir = DATA_DIR / "raw" / date_str
+    files = sorted(raw_dir.glob("HourlyData_*.dat"))
+
+    dfs = []
+
+    for f in files:
+        df = pd.read_csv(
+            f,
+            sep="|",
+            header=None,
+            names=HOURLY_COLUMNS,
+            encoding="latin1"
+        )
+        dfs.append(df)
+
+    return pd.concat(dfs, ignore_index=True)
+
+
 def prepare_hourly_csv(date_str):
     """Convert raw hourly .dat files for a date to a single CSV file.
 
@@ -42,7 +66,13 @@ def prepare_hourly_csv(date_str):
     Args:
         date_str: Date string in 'YYYY-MM-DD' format.
     """
-    raise NotImplementedError("Implement this function.")
+    df = load_hourly_dataframe(date_str)
+
+    out_dir = DATA_DIR / "prepared" / "hourly"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / f"{date_str}.csv"
+    df.to_csv(out_path, index=False)
 
 
 def prepare_hourly_jsonl(date_str):
@@ -55,7 +85,13 @@ def prepare_hourly_jsonl(date_str):
     Args:
         date_str: Date string in 'YYYY-MM-DD' format.
     """
-    raise NotImplementedError("Implement this function.")
+    df = load_hourly_dataframe(date_str)
+
+    out_dir = DATA_DIR / "prepared" / "hourly"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / f"{date_str}.jsonl"
+    df.to_json(out_path, orient="records", lines=True)
 
 
 def prepare_hourly_parquet(date_str):
@@ -67,49 +103,68 @@ def prepare_hourly_parquet(date_str):
     Args:
         date_str: Date string in 'YYYY-MM-DD' format.
     """
-    raise NotImplementedError("Implement this function.")
+    df = load_hourly_dataframe(date_str)
+
+    out_dir = DATA_DIR / "prepared" / "hourly"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / f"{date_str}.parquet"
+    df.to_parquet(out_path, index=False)
 
 
 # --- Site location data ---
 
+def load_site_locations():
+    """Load the latest site locations file."""
+
+    raw_root = DATA_DIR / "raw"
+    latest_date = sorted(raw_root.iterdir())[-1]
+
+    site_file = latest_date / "Monitoring_Site_Locations_V2.dat"
+
+    df = pd.read_csv(site_file, sep="|", encoding="latin1")
+
+    # deduplicate by AQSID
+    df = df.drop_duplicates(subset="AQSID")
+
+    return df
+
+
 def prepare_site_locations_csv():
-    """Convert monitoring site locations to CSV.
+    """Convert monitoring site locations to CSV."""
+    df = load_site_locations()
 
-    Reads the Monitoring_Site_Locations_V2.dat file, deduplicates
-    so there is one row per site (the raw file has one row per
-    site-parameter combination), and writes to
-    data/prepared/sites/site_locations.csv.
+    out_dir = DATA_DIR / "prepared" / "sites"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    Use the most recent date's file from data/raw/.
-    """
-    raise NotImplementedError("Implement this function.")
+    out_path = out_dir / "site_locations.csv"
+    df.to_csv(out_path, index=False)
 
 
 def prepare_site_locations_jsonl():
-    """Convert monitoring site locations to newline-delimited JSON.
+    """Convert monitoring site locations to newline-delimited JSON."""
+    df = load_site_locations()
 
-    Reads the Monitoring_Site_Locations_V2.dat file, deduplicates
-    so there is one row per site (the raw file has one row per
-    site-parameter combination), and writes to
-    data/prepared/sites/site_locations.jsonl.
+    out_dir = DATA_DIR / "prepared" / "sites"
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    Use the most recent date's file from data/raw/.
-    """
-    raise NotImplementedError("Implement this function.")
+    out_path = out_dir / "site_locations.jsonl"
+    df.to_json(out_path, orient="records", lines=True)
 
 
 def prepare_site_locations_geoparquet():
-    """Convert monitoring site locations to GeoParquet with point geometry.
+    """Convert monitoring site locations to GeoParquet with point geometry."""
+    df = load_site_locations()
 
-    Reads the Monitoring_Site_Locations_V2.dat file, deduplicates
-    so there is one row per site (the raw file has one row per
-    site-parameter combination), creates point geometries from
-    latitude and longitude, and writes to
-    data/prepared/sites/site_locations.geoparquet.
+    geometry = [Point(xy) for xy in zip(df["Longitude"], df["Latitude"])]
 
-    Use the most recent date's file from data/raw/.
-    """
-    raise NotImplementedError("Implement this function.")
+    gdf = gpd.GeoDataFrame(df, geometry=geometry, crs="EPSG:4326")
+
+    out_dir = DATA_DIR / "prepared" / "sites"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    out_path = out_dir / "site_locations.geoparquet"
+    gdf.to_parquet(out_path)
 
 
 if __name__ == '__main__':
